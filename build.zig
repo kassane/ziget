@@ -266,9 +266,9 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
         },
         .iguana => {
             const iguana_repo = GitRepoStep.create(b, .{
-                .url = "https://github.com/marler8997/iguanaTLS",
-                .branch = null,
-                .sha = "91d22df192d1df1022352df49f41c1a90ca8327d",
+                .url = "https://github.com/kassane/iguanaTLS",
+                .branch = "master",
+                .sha = "2790ee14e79f0062dec1b09acbdf5eaaa54ba879",
                 .fetch_enabled = true,
             });
             compile.step.dependOn(&iguana_repo.step);
@@ -374,7 +374,7 @@ const FailStep = struct {
     step: std.build.Step,
     fail_msg: []const u8,
     pub fn create(b: *Builder, name: []const u8, fail_msg: []const u8) *FailStep {
-        var result = b.allocator.create(FailStep) catch unreachable;
+        const result = b.allocator.create(FailStep) catch unreachable;
         result.* = .{
             .step = std.build.Step.init(.{
                 .id = .custom,

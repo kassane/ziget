@@ -67,7 +67,6 @@ pub const Url = union(enum) {
     }
 };
 
-
 pub fn ptrIndexOf(comptime T: type, haystack: [*]const T, needle: T) usize {
     var i: usize = 0;
     while (true) : (i += 1) {
@@ -87,11 +86,10 @@ pub fn eqlPtr(comptime T: type, a: [*]const T, b: [*]const T, len: usize) bool {
     return true;
 }
 
-
 fn matchSkip(ptrRef: *[*]const u8, limit: [*]const u8, needle: []const u8) bool {
-    if ( (@intFromPtr(limit) - @intFromPtr(ptrRef.*) >= needle.len) and
-        eqlPtr(u8, ptrRef.*, needle.ptr, needle.len)
-    ) {
+    if ((@intFromPtr(limit) - @intFromPtr(ptrRef.*) >= needle.len) and
+        eqlPtr(u8, ptrRef.*, needle.ptr, needle.len))
+    {
         ptrRef.* = @ptrFromInt(@intFromPtr(ptrRef.*) + needle.len);
         return true;
     }
@@ -105,9 +103,9 @@ pub fn parseUrlLimit(start: [*]const u8, limit: [*]const u8) !Url {
     const isHttps = matchSkip(&ptr, limit, "https://");
     if (isHttps or matchSkip(&ptr, limit, "http://")) {
         if (ptr == limit) return error.UrlHttpMissingHost;
-        var hostStart = ptr;
-        var hostLimit : [*]const u8 = undefined;
-        var optionalPort : ?u16 = null;
+        const hostStart = ptr;
+        var hostLimit: [*]const u8 = undefined;
+        var optionalPort: ?u16 = null;
         parsePort: {
             parseHost: {
                 while (true) {
@@ -132,7 +130,7 @@ pub fn parseUrlLimit(start: [*]const u8, limit: [*]const u8) !Url {
             std.debug.assert(ptr[0] == ':');
             ptr += 1;
             if (ptr == limit) return error.UrlEndedAtPortColon;
-            var port32 : u32 = 0;
+            var port32: u32 = 0;
             while (true) {
                 ptr += 1;
                 if (ptr == limit or ptr[0] == '/')
@@ -145,37 +143,36 @@ pub fn parseUrlLimit(start: [*]const u8, limit: [*]const u8) !Url {
             }
             optionalPort = @intCast(port32);
         }
-        var pathOffset: u16 = @intCast(@intFromPtr(ptr) - @intFromPtr(start));
-        var pathLimit : u16 = undefined;
+        const pathOffset: u16 = @intCast(@intFromPtr(ptr) - @intFromPtr(start));
+        var pathLimit: u16 = undefined;
         if (ptr == limit) {
-            pathLimit  = pathOffset;
+            pathLimit = pathOffset;
         } else {
             std.debug.assert(ptr[0] == '/');
             ptr += 1;
             // TODO: this won't be correct if there is a query
             pathLimit = @intCast(@intFromPtr(limit) - @intFromPtr(start));
         }
-        return Url { .Http = .{
-            .str = start[0..@intFromPtr(limit) - @intFromPtr(start)],
+        return Url{ .Http = .{
+            .str = start[0 .. @intFromPtr(limit) - @intFromPtr(start)],
             .secure = isHttps,
-            .hostOffset  = @intCast(@intFromPtr(hostStart) - @intFromPtr(start)),
-            .hostLimit   = @intCast(@intFromPtr(hostLimit) - @intFromPtr(start)),
+            .hostOffset = @intCast(@intFromPtr(hostStart) - @intFromPtr(start)),
+            .hostLimit = @intCast(@intFromPtr(hostLimit) - @intFromPtr(start)),
             .optionalPort = optionalPort,
-            .pathOffset  = pathOffset,
-            .pathLimit   = pathLimit,
+            .pathOffset = pathOffset,
+            .pathLimit = pathLimit,
             .queryOffset = 0,
-        }};
+        } };
     } else {
         @panic("unknown scheme not impl");
     }
-//    const scheme = schemeInit: {
-//        if (matchSkip(&ptr, limit, "http://")) {
-//            break :schemeInit UrlScheme.http;
-//        } else {
-//            @panic("unknown scheme not impl");
-//        }
-//    };
-//    
+    //    const scheme = schemeInit: {
+    //        if (matchSkip(&ptr, limit, "http://")) {
+    //            break :schemeInit UrlScheme.http;
+    //        } else {
+    //            @panic("unknown scheme not impl");
+    //        }
+    //    };
+    //
     @panic("url not impl");
 }
-
