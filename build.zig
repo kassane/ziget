@@ -268,7 +268,7 @@ fn addSslBackend(compile: *Builder.Step.Compile, backend: SslBackend, ziget_repo
             const iguana_repo = GitRepoStep.create(b, .{
                 .url = "https://github.com/kassane/iguanaTLS",
                 .branch = "master",
-                .sha = "2790ee14e79f0062dec1b09acbdf5eaaa54ba879",
+                .sha = "31d3f532b3fa1319f8f684f2a67447aeee138f92",
                 .fetch_enabled = true,
             });
             compile.step.dependOn(&iguana_repo.step);
