@@ -1,12 +1,12 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const RunStep = std.build.RunStep;
+const RunStep = std.Build.Step.Run;
 const print = std.debug.print;
 
 // This saves the RunStep.make function pointer because it is private
 var global_run_step_make: switch (builtin.zig_backend) {
-    .stage1 => ?fn (step: *std.build.Step, prog_node: *std.Progress.Node) anyerror!void,
-    else => ?*const fn (step: *std.build.Step, prog_node: *std.Progress.Node) anyerror!void,
+    .stage1 => ?fn (step: *std.Build.Step, prog_node: *std.Progress.Node) anyerror!void,
+    else => ?*const fn (step: *std.Build.Step, prog_node: *std.Progress.Node) anyerror!void,
 } = null;
 
 pub fn enable(run_step: *RunStep) void {
@@ -27,7 +27,7 @@ fn printCmd(cwd: ?[]const u8, argv: []const []const u8) void {
     print("\n", .{});
 }
 
-fn loggyRunStepMake(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+fn loggyRunStepMake(step: *std.Build.Step, prog_node: *std.Progress.Node) !void {
     const self = @fieldParentPtr(RunStep, "step", step);
 
     const cwd = if (self.cwd) |cwd| self.step.owner.pathFromRoot(cwd.path) else self.step.owner.build_root.path.?;
@@ -42,7 +42,7 @@ fn loggyRunStepMake(step: *std.build.Step, prog_node: *std.Progress.Node) !void 
             },
             .directory_source => @panic("todo"),
             .artifact => |artifact| {
-                const executable_path = artifact.installed_path orelse artifact.getOutputSource().getPath(self.step.owner);
+                const executable_path = artifact.installed_path orelse artifact.getEmittedBin().getPath(self.step.owner);
                 try argv_list.append(executable_path);
             },
             .output => |output| {

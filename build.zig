@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const Builder = std.build.Builder;
-const Module = std.build.Module;
+const Builder = std.Build;
+const Module = Builder.Module;
 const GitRepoStep = @import("GitRepoStep.zig");
 const loggyrunstep = @import("loggyrunstep.zig");
 
@@ -12,7 +12,7 @@ pub fn build(b: *Builder) !void {
     const is_ci = if (b.option(bool, "is_ci", "is the CI")) |o| o else false;
     const build_all_step = b.step("all", "Build ziget with all the 'enabled' backends");
     const nossl_exe = addExe(b, target, optimize, null, build_all_step, is_ci);
-    var ssl_exes: [ssl_backends.len]*std.build.CompileStep = undefined;
+    var ssl_exes: [ssl_backends.len]*Builder.Step.Compile = undefined;
     inline for (ssl_backends, 0..) |field, i| {
         const enum_value = @field(SslBackend, field.name);
         ssl_exes[i] = addExe(b, target, optimize, enum_value, build_all_step, is_ci);
@@ -51,12 +51,12 @@ fn getEnabledByDefault(optional_ssl_backend: ?SslBackend, is_ci: bool) bool {
 
 fn addExe(
     b: *Builder,
-    target: std.zig.CrossTarget,
+    target: Builder.ResolvedTarget,
     optimize: std.builtin.Mode,
     comptime optional_ssl_backend: ?SslBackend,
-    build_all_step: *std.build.Step,
+    build_all_step: *Builder.Step,
     is_ci: bool,
-) *std.build.CompileStep {
+) *Builder.Step.Compile {
     const info: struct { name: []const u8, exe_suffix: []const u8 } = comptime if (optional_ssl_backend) |backend| .{
         .name = @tagName(backend),
         .exe_suffix = if (backend == .iguana) "" else ("-" ++ @tagName(backend)),
@@ -71,7 +71,7 @@ fn addExe(
         .target = target,
         .optimize = optimize,
     });
-    exe.single_threaded = true;
+    exe.root_module.single_threaded = true;
     addZigetModule(exe, optional_ssl_backend, ".");
     const install = b.addInstallArtifact(exe, .{});
     const enabled_by_default = getEnabledByDefault(optional_ssl_backend, is_ci);
@@ -88,9 +88,9 @@ fn addExe(
 
 fn addTest(
     b: *Builder,
-    test_all_step: *std.build.Step,
+    test_all_step: *Builder.Step,
     comptime backend_name: []const u8,
-    exe: *std.build.CompileStep,
+    exe: *Builder.Step.Compile,
     optional_ssl_backend: ?SslBackend,
     is_ci: bool,
 ) void {
@@ -143,7 +143,7 @@ pub const ssl_backends = @typeInfo(SslBackend).Enum.fields;
 ///! This function will add the necessary include directories, libraries, etc to be able to
 ///! include ziget and it's SSL backend dependencies into the given compile.
 pub fn addZigetModule(
-    compile: *std.build.CompileStep,
+    compile: *Builder.Step.Compile,
     optional_ssl_backend: ?SslBackend,
     ziget_repo: []const u8,
 ) void {
@@ -152,20 +152,20 @@ pub fn addZigetModule(
     const ssl_module = if (optional_ssl_backend) |backend|
         addSslBackend(compile, backend, ziget_repo)
     else
-        b.createModule(.{ .source_file = .{ .path = "nossl/ssl.zig" } });
-    compile.addAnonymousModule("ziget", .{
-        .source_file = .{ .path = ziget_index },
-        .dependencies = &[_]std.Build.ModuleDependency{
+        b.createModule(.{ .root_source_file = .{ .path = "nossl/ssl.zig" } });
+    compile.root_module.addAnonymousImport("ziget", .{
+        .root_source_file = .{ .path = ziget_index },
+        .imports = &[_]std.Build.Module.Import{
             .{ .name = "ssl", .module = ssl_module },
         },
     });
 }
 
-fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_repo: []const u8) *Module {
+fn addSslBackend(compile: *Builder.Step.Compile, backend: SslBackend, ziget_repo: []const u8) *Module {
     const b = compile.step.owner;
     switch (backend) {
         .std => return b.createModule(.{
-            .source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "stdssl.zig" }) },
+            .root_source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "stdssl.zig" }) },
         }),
         .openssl => {
             compile.linkSystemLibrary("c");
@@ -177,7 +177,7 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
                 compile.linkSystemLibrary("crypto");
                 compile.linkSystemLibrary("ssl");
             }
-            return b.createModule(.{ .source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "openssl", "ssl.zig" }) } });
+            return b.createModule(.{ .root_source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "openssl", "ssl.zig" }) } });
         },
         .opensslstatic => {
             const openssl_repo = GitRepoStep.create(b, .{
@@ -189,7 +189,7 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
             // TODO: should we implement something to cache the configuration?
             //       can the configure output be in a different directory?
             {
-                const configure_openssl = std.build.RunStep.create(b, "configure openssl");
+                const configure_openssl = Builder.Step.Run.create(b, "configure openssl");
                 configure_openssl.step.dependOn(&openssl_repo.step);
                 configure_openssl.cwd = .{ .path = openssl_repo.getPath(&configure_openssl.step) };
                 configure_openssl.addArgs(&[_][]const u8{
@@ -225,7 +225,7 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
                 configure_openssl.addCheck(.{
                     .expect_stdout_match = "OpenSSL has been successfully configured",
                 });
-                const make_openssl = std.build.RunStep.create(b, "configure openssl");
+                const make_openssl = Builder.Step.Run.create(b, "configure openssl");
                 make_openssl.cwd = configure_openssl.cwd;
                 make_openssl.addArgs(&[_][]const u8{
                     "make",
@@ -261,7 +261,7 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
             }
             compile.linkLibC();
             return b.createModule(.{
-                .source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "openssl", "ssl.zig" }) },
+                .root_source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "openssl", "ssl.zig" }) },
             });
         },
         .iguana => {
@@ -274,15 +274,15 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
             compile.step.dependOn(&iguana_repo.step);
             const iguana_repo_path = iguana_repo.getPath(&compile.step);
             const iguana_mod = b.addModule("iguanaTLS", .{
-                .source_file = .{
+                .root_source_file = .{
                     .path = b.pathJoin(&.{ iguana_repo_path, "src", "main.zig" }),
                 },
             });
             return b.createModule(.{
-                .source_file = .{
+                .root_source_file = .{
                     .path = b.pathJoin(&.{ ziget_repo, "iguana", "ssl.zig" }),
                 },
-                .dependencies = &[_]std.Build.ModuleDependency{
+                .imports = &[_]std.Build.Module.Import{
                     .{ .name = "iguana", .module = iguana_mod },
                 },
             });
@@ -320,7 +320,7 @@ fn addSslBackend(compile: *std.build.CompileStep, backend: SslBackend, ziget_rep
             //    "https://github.com/marlersoft/zigwin32",
             //    "src" ++ std.fs.path.sep_str ++ "win32.zig");
             return b.createModule(.{
-                .source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "schannel", "ssl.zig" }) },
+                .root_source_file = .{ .path = b.pathJoin(&.{ ziget_repo, "schannel", "ssl.zig" }) },
                 //.dependencies = &[_]Module {
                 //    .{ .name = "win32", .source = .{ .path = zigwin32_index_file } },
                 //},
@@ -333,7 +333,7 @@ const OpensslPathOption = struct {
     // NOTE: I can't use ??[]const u8 because it exposes a bug in the compiler
     is_cached: bool = false,
     cached: ?[]const u8 = undefined,
-    fn get(self: *OpensslPathOption, b: *std.build.Builder) ?[]const u8 {
+    fn get(self: *OpensslPathOption, b: *Builder) ?[]const u8 {
         if (!self.is_cached) {
             self.cached = b.option(
                 []const u8,
@@ -348,7 +348,7 @@ const OpensslPathOption = struct {
 };
 var global_openssl_path_option = OpensslPathOption{};
 
-pub fn setupOpensslWindows(compile: *std.build.CompileStep) void {
+pub fn setupOpensslWindows(compile: *Builder.Step.Compile) void {
     const b = compile.step.owner;
 
     const openssl_path = global_openssl_path_option.get(b) orelse {
@@ -371,12 +371,12 @@ pub fn setupOpensslWindows(compile: *std.build.CompileStep) void {
 }
 
 const FailStep = struct {
-    step: std.build.Step,
+    step: Builder.Step,
     fail_msg: []const u8,
     pub fn create(b: *Builder, name: []const u8, fail_msg: []const u8) *FailStep {
         const result = b.allocator.create(FailStep) catch unreachable;
         result.* = .{
-            .step = std.build.Step.init(.{
+            .step = Builder.Step.init(.{
                 .id = .custom,
                 .name = name,
                 .owner = b,
@@ -386,7 +386,7 @@ const FailStep = struct {
         };
         return result;
     }
-    fn make(step: *std.build.Step, prog_node: *std.Progress.Node) !void {
+    fn make(step: *Builder.Step, prog_node: *std.Progress.Node) !void {
         _ = prog_node;
         const self = @fieldParentPtr(FailStep, "step", step);
         std.log.err("{s}", .{self.fail_msg});
